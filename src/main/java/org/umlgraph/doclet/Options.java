@@ -38,9 +38,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-import com.sun.javadoc.ClassDoc;
-import com.sun.javadoc.Doc;
-import com.sun.javadoc.Tag;
+import javax.lang.model.element.*;
+
+import jdk.javadoc.doclet.DocletEnvironment;
 
 /**
  * Represent the program options
@@ -392,8 +392,10 @@ public class Options implements Cloneable, OptionProvider {
 	} else if(matchOption(opt[0], "inferdepinpackage", true)) {
 	    inferDepInPackage = positive;
 	} else if(matchOption(opt[0], "useimports", true)) {
+	    System.err.println("-useimports is currently not implemented for the Java9+ API!");
 	    useImports = positive;
 	} else if (matchOption(opt[0], "collpackages", true)) {
+	    System.err.println("-collpackages is currently not implemented for the Java9+ API!");
 	    if (positive) {
 		try {
 		    collPackages.add(Pattern.compile(opt[1]));
@@ -572,13 +574,13 @@ public class Options implements Cloneable, OptionProvider {
     }
 
 
-    /** Set the options based on the tag elements of the ClassDoc parameter */
-    public void setOptions(Doc p) {
+    /** Set the options based on the tag elements of the TypeElement parameter */
+    public void setOptions(DocletEnvironment root, Element p) {
 	if (p == null)
 	    return;
 
-	for (Tag tag : p.tags("opt"))
-	    setOption(StringUtil.tokenize(tag.text()));
+	DocletUtil.findTags(root, p, "opt") //
+	.map(DocletUtil::flatText).forEach(text -> setOption(StringUtil.tokenize(text)));
     }
 
     /**
@@ -586,7 +588,7 @@ public class Options implements Cloneable, OptionProvider {
      * with the -hide parameter.
      * @return true if the string matches.
      */
-    public boolean matchesHideExpression(String s) {
+    public boolean matchesHideExpression(CharSequence s) {
 	for (Pattern hidePattern : hidePatterns) {
 	    // micro-optimization because the "all pattern" is heavily used in UmlGraphDoc
 	    if(hidePattern == allPattern)
@@ -604,7 +606,7 @@ public class Options implements Cloneable, OptionProvider {
      * with the -include parameter.
      * @return true if the string matches.
      */
-    public boolean matchesIncludeExpression(String s) {
+    public boolean matchesIncludeExpression(CharSequence s) {
 	for (Pattern includePattern : includePatterns) {
 	    Matcher m = includePattern.matcher(s);
 	    if (strictMatching ? m.matches() : m.find())
@@ -618,7 +620,7 @@ public class Options implements Cloneable, OptionProvider {
      * with the -collpackages parameter.
      * @return true if the string matches.
      */
-    public boolean matchesCollPackageExpression(String s) {
+    public boolean matchesCollPackageExpression(CharSequence s) {
 	for (Pattern collPattern : collPackages) {
 	    Matcher m = collPattern.matcher(s);
 	    if (strictMatching ? m.matches() : m.find())
@@ -631,9 +633,9 @@ public class Options implements Cloneable, OptionProvider {
     // OptionProvider methods
     // ---------------------------------------------------------------- 
     
-    public Options getOptionsFor(ClassDoc cd) {
+    public Options getOptionsFor(DocletEnvironment root, TypeElement cd) {
 	Options localOpt = getGlobalOptions();
-	localOpt.setOptions(cd);
+	localOpt.setOptions(root, cd);
 	return localOpt;
     }
 
@@ -645,7 +647,7 @@ public class Options implements Cloneable, OptionProvider {
 	return (Options) clone();
     }
 
-    public void overrideForClass(Options opt, ClassDoc cd) {
+    public void overrideForClass(Options opt, DocletEnvironment root, TypeElement cd) {
 	// nothing to do
     }
 

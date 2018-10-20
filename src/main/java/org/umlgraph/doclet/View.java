@@ -22,10 +22,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 
-import com.sun.javadoc.ClassDoc;
-import com.sun.javadoc.RootDoc;
-import com.sun.javadoc.Tag;
+import javax.lang.model.element.TypeElement;
+import jdk.javadoc.doclet.DocletEnvironment;
+import com.sun.source.doctree.DocTree;
+import com.sun.source.doctree.UnknownBlockTagTree;
 
 /**
  * Contains the definition of a View. A View is a set of option overrides that
@@ -44,31 +46,34 @@ import com.sun.javadoc.Tag;
  */
 public class View implements OptionProvider {
     Map<ClassMatcher, List<String[]>> optionOverrides = new LinkedHashMap<ClassMatcher, List<String[]>>();
-    ClassDoc viewDoc;
+    TypeElement viewDoc;
     OptionProvider provider;
     List<String[]> globalOptions;
-    RootDoc root;
+    DocletEnvironment root;
 
     /**
      * Builds a view given the class that contains its definition
      */
-    public View(RootDoc root, ClassDoc c, OptionProvider provider) {
+    public View(DocletEnvironment root, TypeElement c, OptionProvider provider) {
 	this.viewDoc = c;
 	this.provider = provider;
 	this.root = root;
-	Tag[] tags = c.tags();
+	List<UnknownBlockTagTree> tags = root.getDocTrees().getDocCommentTree(c).getBlockTags().stream() //
+		.filter(child -> child.getKind() == DocTree.Kind.UNKNOWN_BLOCK_TAG) //
+		.map(UnknownBlockTagTree.class::cast) //
+		.collect(Collectors.toList());
 	ClassMatcher currMatcher = null;
 	// parse options, get the global ones, and build a map of the
 	// pattern matched overrides
 	globalOptions = new ArrayList<String[]>();
-	for (int i = 0; i < tags.length; i++) {
-	    if (tags[i].name().equals("@match")) {
-		currMatcher = buildMatcher(tags[i].text());
+	for (UnknownBlockTagTree tag : tags) {
+	    if (tag.getTagName().equals("match")) {
+		currMatcher = buildMatcher(DocletUtil.flatText(tag.getContent()));
 		if(currMatcher != null) {
 		    optionOverrides.put(currMatcher, new ArrayList<String[]>());
 		}
-	    } else if (tags[i].name().equals("@opt")) {
-		String[] opts = StringUtil.tokenize(tags[i].text());
+	    } else if (tag.getTagName().equals("opt")) {
+		String[] opts = StringUtil.tokenize(DocletUtil.flatText(tag.getContent()));
 		opts[0] = "-" + opts[0];
 		if (currMatcher == null) {
 		    globalOptions.add(opts);
@@ -122,10 +127,10 @@ public class View implements OptionProvider {
     // OptionProvider methods
     // ---------------------------------------------------------------- 
 
-    public Options getOptionsFor(ClassDoc cd) {
+    public Options getOptionsFor(DocletEnvironment root, TypeElement cd) {
 	Options localOpt = getGlobalOptions();
-	overrideForClass(localOpt, cd);
-	localOpt.setOptions(cd);
+	overrideForClass(localOpt, root, cd);
+	localOpt.setOptions(root, cd);
 	return localOpt;
     }
 
@@ -145,13 +150,13 @@ public class View implements OptionProvider {
 	    go.setOption(opts);
 	}
 	if (!outputSet)
-	    go.setOption(new String[] { "output", viewDoc.name() + ".dot" });
+	    go.setOption(new String[] { "output", viewDoc.getSimpleName() + ".dot" });
 	
 	return go;
     }
 
-    public void overrideForClass(Options opt, ClassDoc cd) {
-	provider.overrideForClass(opt, cd);
+    public void overrideForClass(Options opt, DocletEnvironment root, TypeElement cd) {
+	provider.overrideForClass(opt, root, cd);
 	for (ClassMatcher cm : optionOverrides.keySet())
 	    if(cm.matches(cd))
 		for (String[] override : optionOverrides.get(cm))
@@ -167,7 +172,7 @@ public class View implements OptionProvider {
     }
 
     public String getDisplayName() {
-	return "view " + viewDoc.name();
+	return "view " + viewDoc.getSimpleName();
     }
 
 }

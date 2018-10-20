@@ -2,8 +2,10 @@ package org.umlgraph.doclet;
 
 import java.util.regex.Pattern;
 
-import com.sun.javadoc.ClassDoc;
-import com.sun.javadoc.RootDoc;
+import javax.lang.model.element.*;
+import javax.lang.model.type.*;
+
+import jdk.javadoc.doclet.DocletEnvironment;
 
 /**
  * Matches every class that implements (directly or indirectly) an
@@ -11,32 +13,32 @@ import com.sun.javadoc.RootDoc;
  */
 public class InterfaceMatcher implements ClassMatcher {
 
-    protected RootDoc root;
+    protected DocletEnvironment root;
     protected Pattern pattern;
 
-    public InterfaceMatcher(RootDoc root, Pattern pattern) {
+    public InterfaceMatcher(DocletEnvironment root, Pattern pattern) {
 	this.root = root;
 	this.pattern = pattern;
     }
 
-    public boolean matches(ClassDoc cd) {
+    public boolean matches(TypeElement cd) {
 	// if it's the interface we're looking for, match
-	if(cd.isInterface() && pattern.matcher(cd.toString()).matches())
+	if(cd.getKind() == ElementKind.INTERFACE && pattern.matcher(cd.toString()).matches())
 	    return true;
 	
 	// for each interface, recurse, since classes and interfaces 
 	// are treated the same in the doclet API
-	for (ClassDoc iface : cd.interfaces())
-	    if(matches(iface))
+	for (TypeMirror iface : cd.getInterfaces())
+	    if(matches((TypeElement)root.getTypeUtils().asElement(iface)))
 		return true;
 	
 	// recurse on supeclass, if available
-	return cd.superclass() == null ? false : matches(cd.superclass());
+	return cd.getSuperclass() != null && matches((TypeElement)root.getTypeUtils().asElement(cd.getSuperclass()));
     }
 
-    public boolean matches(String name) {
-	ClassDoc cd = root.classNamed(name);
-	return cd == null ? false : matches(cd);
+    public boolean matches(CharSequence name) {
+	TypeElement cd = root.getElementUtils().getTypeElement(name);
+	return cd != null && matches(cd);
     }
 
 }

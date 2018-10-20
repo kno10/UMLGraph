@@ -3,8 +3,9 @@ package org.umlgraph.doclet;
 import java.io.IOException;
 import java.util.regex.Pattern;
 
-import com.sun.javadoc.ClassDoc;
-import com.sun.javadoc.RootDoc;
+import javax.lang.model.element.TypeElement;
+
+import jdk.javadoc.doclet.DocletEnvironment;
 
 /**
  * A view designed for UMLDoc, filters out everything that it's not directly
@@ -19,7 +20,7 @@ import com.sun.javadoc.RootDoc;
  */
 public class ContextView implements OptionProvider {
 
-    private ClassDoc cd;
+    private TypeElement cd;
     private ContextMatcher matcher;
     private Options globalOptions;
     private Options myGlobalOptions;
@@ -28,10 +29,11 @@ public class ContextView implements OptionProvider {
     private Options packageOptions;
     private static final String[] HIDE_OPTIONS = new String[] { "hide" };
 
-    public ContextView(String outputFolder, ClassDoc cd, RootDoc root, Options parent)
+    public ContextView(String outputFolder, TypeElement cd, DocletEnvironment root, Options parent)
 	    throws IOException {
 	this.cd = cd;
-	String outputPath = cd.containingPackage().name().replace('.', '/') + "/" + cd.name()
+	// FIXME: does this really work with inner classes?
+	String outputPath = root.getElementUtils().getPackageOf(cd).toString().replace('.', '/') + "/" + cd.getSimpleName()
 		+ ".dot";
 
 	// setup options statically, so that we won't need to change them so
@@ -52,15 +54,15 @@ public class ContextView implements OptionProvider {
 	this.centerOptions.nodeFillColor = "lemonChiffon";
 	this.centerOptions.showQualified = false;
 
-	this.matcher = new ContextMatcher(root, Pattern.compile(cd.qualifiedName()),
+	this.matcher = new ContextMatcher(root, Pattern.compile(Pattern.quote(cd.getQualifiedName().toString())),
 		myGlobalOptions, true);
 
     }
 
-    public void setContextCenter(ClassDoc contextCenter) {
+    public void setContextCenter(DocletEnvironment root, TypeElement contextCenter) {
 	this.cd = contextCenter;
-	String outputPath = cd.containingPackage().name().replace('.', '/') + "/" + cd.name()
-		+ ".dot";
+	// FIXME: does this really work with inner classes? Probably not.
+	String outputPath = root.getElementUtils().getPackageOf(cd).toString().replace('.', '/') + "/" + cd.getSimpleName() + ".dot";
 	this.myGlobalOptions.setOption(new String[] { "output", outputPath });
 	matcher.setContextCenter(Pattern.compile(cd.toString()));
     }
@@ -73,20 +75,20 @@ public class ContextView implements OptionProvider {
 	return myGlobalOptions;
     }
 
-    public Options getOptionsFor(ClassDoc cd) {
+    public Options getOptionsFor(DocletEnvironment root, TypeElement cd) {
 	Options opt;
-	if (globalOptions.matchesHideExpression(cd.qualifiedName())
-		|| !(matcher.matches(cd) || globalOptions.matchesIncludeExpression(cd.qualifiedName()))) {
+	if (globalOptions.matchesHideExpression(cd.getQualifiedName())
+		|| !(matcher.matches(cd) || globalOptions.matchesIncludeExpression(cd.getQualifiedName()))) {
 		opt = hideOptions;
 	} else if (cd.equals(this.cd)) {
 		opt = centerOptions;
-	} else if(cd.containingPackage().equals(this.cd.containingPackage())){
+	} else if(cd.getEnclosingElement().equals(this.cd.getEnclosingElement())){
 		opt = packageOptions;
 	} else {
 		opt = globalOptions;
 	}
 	Options optionClone = (Options) opt.clone();
-	overrideForClass(optionClone, cd);
+	overrideForClass(optionClone, root, cd);
 	return optionClone;
     }
 
@@ -94,7 +96,7 @@ public class ContextView implements OptionProvider {
 	Options opt;
 	if (!matcher.matches(name))
 		opt = hideOptions;
-	else if (name.equals(cd.name()))
+	else if (name.contentEquals(cd.getQualifiedName()))
 		opt = centerOptions;
 	else
 		opt = globalOptions;
@@ -103,10 +105,10 @@ public class ContextView implements OptionProvider {
 	return optionClone;
     }
 
-    public void overrideForClass(Options opt, ClassDoc cd) {
-	opt.setOptions(cd);
-	if (opt.matchesHideExpression(cd.qualifiedName())
-		|| !(matcher.matches(cd) || opt.matchesIncludeExpression(cd.qualifiedName())))
+    public void overrideForClass(Options opt, DocletEnvironment root, TypeElement cd) {
+	opt.setOptions(root, cd);
+	if (opt.matchesHideExpression(cd.getQualifiedName())
+		|| !(matcher.matches(cd) || opt.matchesIncludeExpression(cd.getQualifiedName())))
 	    opt.setOption(HIDE_OPTIONS);
 	if (cd.equals(this.cd))
 	    opt.nodeFillColor = "lemonChiffon";

@@ -1,8 +1,9 @@
 package org.umlgraph.doclet;
 
-import com.sun.javadoc.ClassDoc;
-import com.sun.javadoc.PackageDoc;
-import com.sun.javadoc.RootDoc;
+import javax.lang.model.element.PackageElement;
+import javax.lang.model.element.TypeElement;
+
+import jdk.javadoc.doclet.DocletEnvironment;
 
 /**
  * A view designed for UMLDoc, filters out everything that it's not contained in
@@ -18,19 +19,19 @@ import com.sun.javadoc.RootDoc;
 public class PackageView implements OptionProvider {
 
     private static final String[] HIDE = new String[] { "hide" };
-    private PackageDoc pd;
+    private PackageElement pd;
     private OptionProvider parent;
     private ClassMatcher matcher;
     private String outputPath;
     private Options opt;
 
-    public PackageView(String outputFolder, PackageDoc pd, RootDoc root, OptionProvider parent) {
+    public PackageView(String outputFolder, PackageElement pd, DocletEnvironment root, OptionProvider parent) {
 	this.parent = parent;
 	this.pd = pd;
 	this.matcher = new PackageMatcher(pd);
 	this.opt = parent.getGlobalOptions();
-	this.opt.setOptions(pd);
-	this.outputPath = pd.name().replace('.', '/') + "/" + pd.name() + ".dot";
+	this.opt.setOptions(root, pd);
+	this.outputPath = pd.getQualifiedName().toString().replace('.', '/') + "/" + pd.getQualifiedName().toString() + ".dot";
     }
 
     public String getDisplayName() {
@@ -46,9 +47,9 @@ public class PackageView implements OptionProvider {
 	return go;
     }
 
-    public Options getOptionsFor(ClassDoc cd) {
+    public Options getOptionsFor(DocletEnvironment root, TypeElement cd) {
 	Options go = parent.getGlobalOptions();
-	overrideForClass(go, cd);
+	overrideForClass(go, root, cd);
 	return go;
     }
 
@@ -58,13 +59,13 @@ public class PackageView implements OptionProvider {
 	return go;
     }
 
-    public void overrideForClass(Options opt, ClassDoc cd) {
-	opt.setOptions(cd);
+    public void overrideForClass(Options opt, DocletEnvironment root, TypeElement cd) {
+	opt.setOptions(root, cd);
 	boolean inPackage = matcher.matches(cd);
 	if (inPackage)
 	    opt.showQualified = false;
-	if (!(inPackage || this.opt.matchesIncludeExpression(cd.qualifiedName()))
-		|| this.opt.matchesHideExpression(cd.qualifiedName()))
+	if (!(inPackage || this.opt.matchesIncludeExpression(cd.getQualifiedName()))
+		|| this.opt.matchesHideExpression(cd.getQualifiedName()))
 	    opt.setOption(HIDE);
     }
 

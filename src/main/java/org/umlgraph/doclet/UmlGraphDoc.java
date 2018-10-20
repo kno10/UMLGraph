@@ -9,92 +9,91 @@ import java.io.FileOutputStream;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.TreeSet;
 import java.util.Comparator;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import com.sun.javadoc.ClassDoc;
-import com.sun.javadoc.LanguageVersion;
-import com.sun.javadoc.PackageDoc;
-import com.sun.javadoc.RootDoc;
-import com.sun.tools.doclets.standard.Standard;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.util.ElementFilter;
+import javax.tools.Diagnostic.Kind;
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.Name;
+import javax.lang.model.element.PackageElement;
+import jdk.javadoc.doclet.DocletEnvironment;
+import jdk.javadoc.doclet.Reporter;
+import jdk.javadoc.doclet.StandardDoclet;
+
+import static org.umlgraph.doclet.DocletUtil.*;
 
 /**
  * Chaining doclet that runs the standart Javadoc doclet first, and on success,
  * runs the generation of dot files by UMLGraph
  * @author wolf
- * 
- * @depend - - - WrappedClassDoc
- * @depend - - - WrappedRootDoc
  */
-public class UmlGraphDoc {
-    /**
-     * Option check, forwards options to the standard doclet, if that one refuses them,
-     * they are sent to UmlGraph
-     */
-    public static int optionLength(String option) {
-	int result = Standard.optionLength(option);
-	if (result != 0)
-	    return result;
-	else
-	    return UmlGraph.optionLength(option);
+public class UmlGraphDoc extends StandardDoclet {
+    private Reporter reporter;
+    
+    private UmlGraph umlgraph = new UmlGraph();
+
+    @Override
+    public Set<Option> getSupportedOptions() {
+        Set<Option> opts = new HashSet<Option>(super.getSupportedOptions());
+        opts.addAll(umlgraph.getSupportedOptions());
+        return opts;
     }
 
-    /**
-     * Standard doclet entry point
-     * @param root
-     * @return
-     */
-    public static boolean start(RootDoc root) {
-	root.printNotice("UmlGraphDoc version " + Version.VERSION +  ", running the standard doclet");
-	Standard.start(root);
-	root.printNotice("UmlGraphDoc version " + Version.VERSION + ", altering javadocs");
+    @Override
+    public void init(Locale locale, Reporter reporter) {
+        super.init(locale, reporter);
+	this.reporter = reporter;
+    }
+    
+    @Override
+    public boolean run(DocletEnvironment root) {
+	reporter.print(Kind.NOTE, "UmlGraphDoc version " + Version.VERSION +  ", running the standard doclet");
+        if (!super.run(root)) {
+            return false;
+        }
+        reporter.print(Kind.NOTE,  "UmlGraphDoc version " + Version.VERSION + ", altering javadocs");
 	try {
 	    String outputFolder = findOutputPath(root.options());
 
-        Options opt = UmlGraph.buildOptions(root);
+	    Options opt = umlgraph.buildOptions(root);
 	    opt.setOptions(root.options());
 	    // in javadoc enumerations are always printed
 	    opt.showEnumerations = true;
 	    opt.relativeLinksForSourcePackages = true;
 	    // enable strict matching for hide expressions
 	    opt.strictMatching = true;
-//	    root.printNotice(opt.toString());
+//	    reporter.print(Kind.NOTE,  opt.toString());
 
 	    generatePackageDiagrams(root, opt, outputFolder);
 	    generateContextDiagrams(root, opt, outputFolder);
 	} catch(Throwable t) {
-	    root.printWarning("Error: " + t.toString());
+	    reporter.print(Kind.ERROR,  "Error: " + t.toString());
 	    t.printStackTrace();
 	    return false;
 	}
-	return true;
     }
-
-    /**
-     * Standand doclet entry
-     * @return
-     */
-    public static LanguageVersion languageVersion() {
-	return Standard.languageVersion();
-    }
-
+    
     /**
      * Generates the package diagrams for all of the packages that contain classes among those 
-     * returned by RootDoc.class() 
+     * returned by DocletEnvironment.class() 
      */
-    private static void generatePackageDiagrams(RootDoc root, Options opt, String outputFolder)
+    private void generatePackageDiagrams(DocletEnvironment root, Options opt, String outputFolder)
 	    throws IOException {
 	Set<String> packages = new HashSet<String>();
-	for (ClassDoc classDoc : root.classes()) {
-	    PackageDoc packageDoc = classDoc.containingPackage();
-	    if(!packages.contains(packageDoc.name())) {
-		packages.add(packageDoc.name());
-    	    OptionProvider view = new PackageView(outputFolder, packageDoc, root, opt);
-    	    UmlGraph.buildGraph(root, view, packageDoc);
-    	    runGraphviz(opt.dotExecutable, outputFolder, packageDoc.name(), packageDoc.name(), root);
-    	    alterHtmlDocs(opt, outputFolder, packageDoc.name(), packageDoc.name(),
+	for (TypeElement classDoc : ElementFilter.typesIn(root.getIncludedElements())) {
+	    PackageElement PackageElement = root.getElementUtils().getPackageOf(classDoc);
+	    String qname = PackageElement.getQualifiedName().toString();
+	    if(!packages.contains(qname)) {
+		packages.add(qname);
+    	    OptionProvider view = new PackageView(outputFolder, PackageElement, root, opt);
+    	    umlgraph.buildGraph(root, view, PackageElement);
+    	    runGraphviz(opt.dotExecutable, outputFolder, qname, qname, root);
+    	    alterHtmlDocs(opt, outputFolder, qname, qname,
     		    "package-summary.html", Pattern.compile("(</[Hh]2>)|(<h1 title=\"Package\").*"), root);
 	    }
 	}
@@ -103,33 +102,33 @@ public class UmlGraphDoc {
     /**
      * Generates the context diagram for a single class
      */
-    private static void generateContextDiagrams(RootDoc root, Options opt, String outputFolder)
+    private void generateContextDiagrams(DocletEnvironment root, Options opt, String outputFolder)
 	    throws IOException {
-        Set<ClassDoc> classDocs = new TreeSet<ClassDoc>(new Comparator<ClassDoc>() {
-            public int compare(ClassDoc cd1, ClassDoc cd2) {
-                return cd1.name().compareTo(cd2.name());
+        Set<TypeElement> classDocs = new TreeSet<TypeElement>(new Comparator<TypeElement>() {
+            public int compare(TypeElement cd1, TypeElement cd2) {
+                return cd1.getQualifiedName().toString().compareTo(cd2.getQualifiedName().toString());
             }
         });
-        for (ClassDoc classDoc : root.classes())
+        for (TypeElement classDoc : ElementFilter.typesIn(root.getIncludedElements()))
             classDocs.add(classDoc);
 
 	ContextView view = null;
-	for (ClassDoc classDoc : classDocs) {
+	for (TypeElement classDoc : classDocs) {
 	    if(view == null)
 		view = new ContextView(outputFolder, classDoc, root, opt);
 	    else
-		view.setContextCenter(classDoc);
-	    UmlGraph.buildGraph(root, view, classDoc);
-	    runGraphviz(opt.dotExecutable, outputFolder, classDoc.containingPackage().name(), classDoc.name(), root);
-	    alterHtmlDocs(opt, outputFolder, classDoc.containingPackage().name(), classDoc.name(),
-		    classDoc.name() + ".html", Pattern.compile(".*(Class|Interface|Enum) " + classDoc.name() + ".*") , root);
+		view.setContextCenter(root, classDoc);
+	    umlgraph.buildGraph(root, view, classDoc);
+	    runGraphviz(opt.dotExecutable, outputFolder, root.getElementUtils().getPackageOf(classDoc).toString(), classDoc.getQualifiedName().toString(), root);
+	    alterHtmlDocs(opt, outputFolder, root.getElementUtils().getPackageOf(classDoc).toString(), classDoc.getQualifiedName().toString(),
+		    classDoc.getQualifiedName() + ".html", Pattern.compile(".*(Class|Interface|Enum) " + classDoc.getSimpleName() + ".*") , root);
 	}
     }
 
     /**
      * Runs Graphviz dot building both a diagram (in png format) and a client side map for it.
      */
-    private static void runGraphviz(String dotExecutable, String outputFolder, String packageName, String name, RootDoc root) {
+    private void runGraphviz(String dotExecutable, String outputFolder, String packageName, String name, DocletEnvironment root) {
     if (dotExecutable == null) {
       dotExecutable = "dot";
     }
@@ -147,10 +146,10 @@ public class UmlGraphDoc {
 	    BufferedReader reader = new BufferedReader(new InputStreamReader(p.getErrorStream()));
 	    String line;
 	    while((line = reader.readLine()) != null)
-		root.printWarning(line);
+		reporter.print(Kind.WARNING, line);
 	    int result = p.waitFor();
 	    if (result != 0)
-		root.printWarning("Errors running Graphviz on " + dotFile);
+		reporter.print(Kind.WARNING,  "Errors running Graphviz on " + dotFile);
 	} catch (Exception e) {
 	    e.printStackTrace();
 	    System.err.println("Ensure that dot is in your path and that its path does not contain spaces");
@@ -192,8 +191,8 @@ public class UmlGraphDoc {
      * Takes an HTML file, looks for the first instance of the specified insertion point, and
      * inserts the diagram image reference and a client side map in that point.
      */
-    private static void alterHtmlDocs(Options opt, String outputFolder, String packageName, String className,
-	    String htmlFileName, Pattern insertPointPattern, RootDoc root) throws IOException {
+    private void alterHtmlDocs(Options opt, String outputFolder, String packageName, String className,
+	    String htmlFileName, Pattern insertPointPattern, DocletEnvironment root) throws IOException {
 	// setup files
 	File output = new File(outputFolder, packageName.replace(".", "/"));
 	File htmlFile = new File(output, htmlFileName);
@@ -247,7 +246,7 @@ public class UmlGraphDoc {
 	    htmlFile.delete();
 	    alteredFile.renameTo(htmlFile);
 	} else {
-	    root.printNotice("Warning, could not find a line that matches the pattern '" + insertPointPattern.pattern() 
+	    reporter.print(Kind.NOTE,  "Warning, could not find a line that matches the pattern '" + insertPointPattern.pattern() 
 		    + "'.\n Class diagram reference not inserted");
 	    alteredFile.delete();
 	}
