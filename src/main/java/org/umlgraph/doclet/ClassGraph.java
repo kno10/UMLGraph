@@ -80,16 +80,7 @@ class ClassGraph {
 	    this.lower = toString().toLowerCase();
 	}
     };
-    public static Map<RelationType, String> associationMap = new HashMap<RelationType, String>();
-    static {
-	associationMap.put(RelationType.ASSOC, "arrowhead=none");
-	associationMap.put(RelationType.NAVASSOC, "arrowhead=open");
-	associationMap.put(RelationType.HAS, "arrowhead=none, arrowtail=ediamond, dir=both");
-	associationMap.put(RelationType.NAVHAS, "arrowhead=open, arrowtail=ediamond, dir=both");
-	associationMap.put(RelationType.COMPOSED, "arrowhead=none, arrowtail=diamond, dir=both");
-	associationMap.put(RelationType.NAVCOMPOSED, "arrowhead=open, arrowtail=diamond, dir=both");
-	associationMap.put(RelationType.DEPEND, "arrowhead=open, style=dashed");
-    }
+
     protected Map<String, ClassInfo> classnames = new HashMap<String, ClassInfo>();
     protected Set<String> rootClasses;
 	protected Map<String, ClassDoc> rootClassdocs = new HashMap<String, ClassDoc>();
@@ -574,7 +565,6 @@ class ClassGraph {
 	    ClassDoc to, String toName, String tailLabel, String label, String headLabel) {
 
 	// print relation
-	String edgetype = associationMap.get(rt);
 	w.println("\t// " + fromName + " " + rt.toString() + " " + toName);
 	w.println("\t" + relationNode(from, fromName) + " -> " + relationNode(to, toName) + " [" +
     	"taillabel=\"" + tailLabel + "\", " +
@@ -584,7 +574,7 @@ class ClassGraph {
     	"fontcolor=\"" + opt.edgeFontColor + "\", " +
     	"fontsize=" + opt.edgeFontSize + ", " +
     	"color=\"" + opt.edgeColor + "\", " +
-    	edgetype + "];"
+    	rt.style + "];"
     	);
 	
 	// update relation info
@@ -640,7 +630,8 @@ class ClassGraph {
 	    !hidden(s.asClassDoc())) {
 	    	ClassDoc sc = s.asClassDoc();
 		w.println("\t//" + c + " extends " + s + "\n" +
-		    "\t" + relationNode(sc) + " -> " + relationNode(c) + " [dir=back,arrowtail=empty];");
+		    "\t" + relationNode(sc) + " -> " + relationNode(c) +
+		    " [" + RelationType.EXTENDS.style + "];");
 		getClassInfo(className).addRelation(sc.toString(), RelationType.EXTENDS, RelationDirection.OUT);
 		getClassInfo(sc.toString()).addRelation(className, RelationType.EXTENDS, RelationDirection.IN);
 	}
@@ -650,7 +641,7 @@ class ClassGraph {
 	    if (!hidden(tag.text())) {
 		ClassDoc from = c.findClass(tag.text());
 		w.println("\t//" + c + " extends " + tag.text() + "\n" +
-		    "\t" + relationNode(from, tag.text()) + " -> " + relationNode(c) + " [dir=back,arrowtail=empty];");
+		    "\t" + relationNode(from, tag.text()) + " -> " + relationNode(c) + " [" + RelationType.EXTENDS.style + "];");
 		getClassInfo(className).addRelation(tag.text(), RelationType.EXTENDS, RelationDirection.OUT);
 		getClassInfo(tag.text()).addRelation(className, RelationType.EXTENDS, RelationDirection.IN);
 	    }
@@ -658,9 +649,8 @@ class ClassGraph {
 	for (Type iface : c.interfaceTypes()) {
 	    ClassDoc ic = iface.asClassDoc();
 	    if (!hidden(ic)) {
-		w.println("\t//" + c + " implements " + ic + "\n\t" + 
-		    relationNode(ic) + " -> " + relationNode(c) + " [dir=back,arrowtail=empty,style=dashed];"
-		    );
+		w.println("\t//" + c + " implements " + ic + "\n\t" + relationNode(ic) + " -> " + relationNode(c)
+			+ " [" + RelationType.IMPLEMENTS.style + "];");
 		getClassInfo(className).addRelation(ic.toString(), RelationType.IMPLEMENTS, RelationDirection.OUT);
 		getClassInfo(ic.toString()).addRelation(className, RelationType.IMPLEMENTS, RelationDirection.IN);
 	    }
